@@ -6,6 +6,7 @@ connection = sqlite3.connect("chainguard.db")
 # Enable Foreign Key support
 connection.execute("PRAGMA foreign_keys = ON")
 
+
 print("Database connected successfully!")
 
 
@@ -48,6 +49,21 @@ VALUES (?, ?, ?, ?)
 connection.commit()
 
 print("Sample manufacturer inserted successfully!")
+ # Insert second sample manufacturer
+connection.execute("""
+INSERT OR IGNORE INTO Manufacturers
+(company_name, email, password_hash, address)
+VALUES (?, ?, ?, ?)
+""", (
+    "GlowCare Pvt Ltd",
+    "glowcare@example.com",
+    "DEMO_ONLY_NOT_FOR_LOGIN",
+    "Indore, India"
+))
+
+connection.commit()
+
+print("Second manufacturer inserted successfully!")
 
 
 # ==========================================
@@ -209,7 +225,27 @@ else:
     else:
 
         print("Unexpected Products table structure!")
-        
+
+       # Insert a new product
+
+connection.execute("""
+INSERT OR IGNORE INTO Products
+(product_id, product_name, brand, manufacturer_id,
+ manufacturing_date, expiry_date, status)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+""", (
+    "CG10004",
+    "Hydrating Face Moisturizer",
+    "GlowCare",
+    5,
+    "2026-11-20",
+    "2028-11-20",
+    "active"
+))
+
+connection.commit()
+
+print("New product inserted successfully!") 
 
 # ==========================================
 # STEP 5: CHECK PRODUCTS TABLE STRUCTURE
@@ -265,6 +301,110 @@ result = connection.execute(
 
 for product in result:
     print(product)
+    # ==========================================
+# STEP 8.1: SEARCH PRODUCT USING WHERE
+# ==========================================
+
+print("\n----- SEARCH SPECIFIC PRODUCT -----")
+
+result = connection.execute(
+    "SELECT * FROM Products WHERE product_id = ?",
+    ("CG10004",)
+)
+
+for product in result:
+    print(product)
+
+# ==========================================
+# STEP 8.2: SORT PRODUCTS USING ORDER BY
+# ==========================================
+
+print("\n----- PRODUCTS SORTED BY NAME -----")
+
+result = connection.execute("""
+SELECT * FROM Products
+ORDER BY product_name ASC
+""")
+
+for product in result:
+    print(product)
+
+# ==========================================
+# STEP 8.3: UPDATE PRODUCT STATUS
+# ==========================================
+
+print("\n----- UPDATE PRODUCT STATUS -----")
+
+connection.execute("""
+UPDATE Products
+SET status = ?
+WHERE product_id = ?
+""", ("inactive", "CG10004"))
+
+connection.commit()
+
+print("Product status updated successfully!")
+
+# Verify updated record
+result = connection.execute("""
+SELECT * FROM Products
+WHERE product_id = ?
+""", ("CG10004",))
+
+for product in result:
+    print(product)
+
+
+
+  # ==========================================
+# STEP 8.4: JOIN PRODUCTS AND MANUFACTURERS
+# ==========================================
+
+print("\n----- PRODUCTS WITH MANUFACTURER DETAILS -----")
+
+result = connection.execute("""
+SELECT
+    Products.product_id,
+    Products.product_name,
+    Manufacturers.company_name
+FROM Products
+INNER JOIN Manufacturers
+ON Products.manufacturer_id = Manufacturers.manufacturer_id
+""")
+
+for product in result:
+    print(product)  
+
+
+
+    # ==========================================
+# STEP 8.5: AGGREGATE FUNCTIONS
+# ==========================================
+
+print("\n----- DATABASE STATISTICS -----")
+
+# 1. Total Products
+result = connection.execute(
+    "SELECT COUNT(*) FROM Products"
+).fetchone()
+
+print("Total Products:", result[0])
+
+
+# 2. Total Manufacturers
+result = connection.execute(
+    "SELECT COUNT(*) FROM Manufacturers"
+).fetchone()
+
+print("Total Manufacturers:", result[0])
+
+
+# 3. Active Products
+result = connection.execute(
+    "SELECT COUNT(*) FROM Products WHERE status = 'active'"
+).fetchone()
+
+print("Active Products:", result[0])
 
 
 # ==========================================
