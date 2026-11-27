@@ -1,10 +1,17 @@
-import uuid
 import sqlite3
+import bcrypt
+import uuid
 import qrcode
 import cv2
+import os
+
+from datetime import date
 
 
-# Connect to ChainGuard database
+# ==========================================
+# DATABASE CONNECTION
+# ==========================================
+
 def get_connection():
 
     connection = sqlite3.connect("chainguard.db")
@@ -13,10 +20,53 @@ def get_connection():
 
     return connection
 
-import bcrypt
+
+# ==========================================
+# SCAN HISTORY
+# ==========================================
+
+def create_scan_history_table():
+
+    connection = get_connection()
+
+    try:
+
+        connection.execute("""
+        CREATE TABLE IF NOT EXISTS Scan_History (
+            scan_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id TEXT NOT NULL,
+            scan_time TEXT DEFAULT CURRENT_TIMESTAMP,
+            scan_result TEXT NOT NULL
+        )
+        """)
+
+        connection.commit()
+
+    finally:
+        connection.close()
 
 
-# Hash manufacturer password
+def record_scan(product_id, scan_result):
+
+    connection = get_connection()
+
+    try:
+
+        connection.execute("""
+        INSERT INTO Scan_History (product_id, scan_result)
+        VALUES (?, ?)
+        """, (product_id, scan_result))
+
+        connection.commit()
+
+    finally:
+        connection.close()
+
+
+# ==========================================
+# PASSWORD HASHING
+# ==========================================
+
 def hash_password(password):
 
     password_bytes = password.encode("utf-8")
@@ -29,15 +79,15 @@ def hash_password(password):
     return hashed_password.decode("utf-8")
 
 
+# ==========================================
+# MANUFACTURER REGISTRATION
+# ==========================================
 
-# Register a new manufacturer
 def register_manufacturer(company_name, email, password, address):
 
-    # Validate empty fields
     if not company_name or not email or not password:
         return "Please fill all required fields."
 
-    # Hash password
     password_hash = hash_password(password)
 
     connection = get_connection()
@@ -60,15 +110,19 @@ def register_manufacturer(company_name, email, password, address):
         return "Manufacturer registered successfully!"
 
     except sqlite3.IntegrityError:
+
         connection.rollback()
+
         return "Email already registered or invalid data."
 
     finally:
         connection.close()
 
 
+# ==========================================
+# MANUFACTURER LOGIN
+# ==========================================
 
-        # Login manufacturer
 def login_manufacturer(email, password):
 
     if not email or not password:
@@ -88,23 +142,19 @@ def login_manufacturer(email, password):
 
         manufacturer = cursor.fetchone()
 
-        # Check whether email exists
         if manufacturer is None:
             return "Invalid email or password."
 
-        manufacturer_id = manufacturer[0]
         company_name = manufacturer[1]
         stored_hash = manufacturer[2]
         status = manufacturer[3]
 
-        # Verify password
         password_bytes = password.encode("utf-8")
         hashed_bytes = stored_hash.encode("utf-8")
 
         if not bcrypt.checkpw(password_bytes, hashed_bytes):
             return "Invalid email or password."
 
-        # Check manufacturer approval status
         if status != "Approved":
             return "Your account is pending approval."
 
@@ -114,8 +164,10 @@ def login_manufacturer(email, password):
         connection.close()
 
 
+# ==========================================
+# ADMIN APPROVAL
+# ==========================================
 
-        # Approve manufacturer
 def approve_manufacturer(email):
 
     connection = get_connection()
@@ -141,7 +193,10 @@ def approve_manufacturer(email):
         connection.close()
 
 
-# Generate unique Product ID
+# ==========================================
+# GENERATE UNIQUE PRODUCT ID
+# ==========================================
+
 def generate_product_id():
 
     unique_id = uuid.uuid4().hex[:10].upper()
@@ -149,13 +204,58 @@ def generate_product_id():
     return "CG-" + unique_id
 
 
-# Register a new product
+# ==========================================
+# QR CODE GENERATION
+# ==========================================
+
+def generate_qr_code(product_id):
+
+    os.makedirs("qr_codes", exist_ok=True)
+
+    qr = qrcode.make(product_id)
+
+    file_name = os.path.join(
+        "qr_codes",
+        f"{product_id}.png"
+    )
+
+    qr.save(file_name)
+
+    return file_name
+
+
+# ==========================================
+# PRODUCT REGISTRATION
+# ==========================================
+
 def register_product(manufacturer_email, product_name, brand,
                      manufacturing_date, expiry_date):
 
-    if not all([manufacturer_email, product_name, brand,
-                manufacturing_date, expiry_date]):
-        return "Please fill all product details."
+    if not all([
+        manufacturer_email,
+        product_name,
+        brand,
+        manufacturing_date,
+        expiry_date
+    ]):
+        return "Please fill all required fields."
+
+    # Date validation
+
+    try:
+
+        mfg_date = date.fromisoformat(manufacturing_date)
+        exp_date = date.fromisoformat(expiry_date)
+
+        if mfg_date > date.today():
+            return "Manufacturing date cannot be in the future."
+
+        if exp_date <= mfg_date:
+            return "Expiry date must be after manufacturing date."
+
+    except ValueError:
+
+        return "Invalid date format. Use YYYY-MM-DD."
 
     connection = get_connection()
 
@@ -164,6 +264,7 @@ def register_product(manufacturer_email, product_name, brand,
         cursor = connection.cursor()
 
         # Check manufacturer approval
+
         cursor.execute("""
         SELECT manufacturer_id
         FROM Manufacturers
@@ -178,9 +279,11 @@ def register_product(manufacturer_email, product_name, brand,
         manufacturer_id = manufacturer[0]
 
         # Generate Product ID
+
         product_id = generate_product_id()
 
-        # Save product in database
+        # Insert product into database
+
         cursor.execute("""
         INSERT INTO Products
         (product_id, product_name, brand, manufacturer_id,
@@ -197,35 +300,29 @@ def register_product(manufacturer_email, product_name, brand,
 
         connection.commit()
 
-        #Generate QR code
-        qr_file=generate_qr_code(product_id)
+        # Generate QR Code
 
-        return f"Product registered successfully! Product ID: {product_id}, QR Code: {qr_file}"
+        qr_file = generate_qr_code(product_id)
 
-        
-        
+        return (
+            f"Product registered successfully! "
+            f"Product ID: {product_id}, QR Code: {qr_file}"
+        )
+
     except sqlite3.IntegrityError:
+
         connection.rollback()
+
         return "Product registration failed."
 
     finally:
         connection.close()
 
 
+# ==========================================
+# QR CODE SCANNING
+# ==========================================
 
-# Generate QR Code for a product
-def generate_qr_code(product_id):
-
-    qr = qrcode.make(product_id)
-
-    file_name = f"{product_id}.png"
-
-    qr.save(file_name)
-
-    return file_name
-
-
-# Scan QR Code
 def scan_qr_code(image_path):
 
     detector = cv2.QRCodeDetector()
@@ -243,8 +340,10 @@ def scan_qr_code(image_path):
     return "No QR Code detected."
 
 
+# ==========================================
+# PRODUCT VERIFICATION
+# ==========================================
 
-# Verify product using Product ID
 def verify_product(product_id):
 
     connection = get_connection()
@@ -262,9 +361,13 @@ def verify_product(product_id):
             Products.manufacturing_date,
             Products.expiry_date,
             Products.status
+
         FROM Products
+
         INNER JOIN Manufacturers
+
         ON Products.manufacturer_id = Manufacturers.manufacturer_id
+
         WHERE Products.product_id = ?
         """, (product_id,))
 
@@ -273,7 +376,9 @@ def verify_product(product_id):
         if product is None:
             return "Product Not Registered in ChainGuard."
 
-        return {
+        # Convert tuple into dictionary
+
+        product = {
             "Product ID": product[0],
             "Product Name": product[1],
             "Brand": product[2],
@@ -283,13 +388,43 @@ def verify_product(product_id):
             "Status": product[6]
         }
 
+        # Check product status
+
+        if product["Status"].lower() != "active":
+
+            product["Verification Result"] = "Inactive"
+
+            return product
+
+        # Check expiry date
+
+        expiry_date = date.fromisoformat(product["Expiry Date"])
+
+        if expiry_date < date.today():
+
+            product["Verification Result"] = "Expired"
+
+        else:
+
+            product["Verification Result"] = "Verified"
+
+        return product
+
     finally:
         connection.close()
 
 
+# ==========================================
+# MAIN TESTING
+# ==========================================
+
 if __name__ == "__main__":
 
-    scanned_id = scan_qr_code("CG-5D35FF6CDD.png")
+    create_scan_history_table()
+
+    scanned_id = scan_qr_code(
+        "qr_codes/CG-5D35FF6CDD.png"
+    )
 
     print("Scanned Product ID:", scanned_id)
 
@@ -300,5 +435,20 @@ if __name__ == "__main__":
         print("\nProduct Verification Result:")
         print(result)
 
+        if isinstance(result, dict):
+
+            record_scan(
+                scanned_id,
+                result["Verification Result"]
+            )
+
+        else:
+
+            record_scan(
+                scanned_id,
+                "Unknown Product"
+            )
+
     else:
+
         print("QR Scanning Failed!")
