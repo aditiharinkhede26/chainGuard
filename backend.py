@@ -63,6 +63,49 @@ def record_scan(product_id, scan_result):
         connection.close()
 
 
+   # ==========================================
+# GET MANUFACTURER SCAN HISTORY
+# ==========================================
+
+def get_manufacturer_scan_history(manufacturer_id, limit=10):
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+        SELECT
+            Scan_History.product_id,
+            Products.product_name,
+            Scan_History.scan_time,
+            Scan_History.scan_result
+        FROM Scan_History
+        JOIN Products
+        ON Scan_History.product_id = Products.product_id
+        WHERE Products.manufacturer_id = ?
+        ORDER BY Scan_History.scan_time DESC
+        LIMIT ?
+        """, (manufacturer_id, limit))
+
+        scans = cursor.fetchall()
+
+        scan_history = []
+
+        for scan in scans:
+            scan_history.append({
+                "Product ID": scan[0],
+                "Product Name": scan[1],
+                "Scan Time": scan[2],
+                "Scan Result": scan[3]
+            })
+
+        return scan_history
+
+    finally:
+        connection.close()     
+
+
 # ==========================================
 # PASSWORD HASHING
 # ==========================================
@@ -158,8 +201,12 @@ def login_manufacturer(email, password):
         if status != "Approved":
             return "Your account is pending approval."
 
-        return f"Welcome {company_name}! Login successful."
-
+        return {
+    "success": True,
+    "manufacturer_id": manufacturer[0],
+    "company_name": company_name,
+    "message": "Login successful!"
+}
     finally:
         connection.close()
 
@@ -319,6 +366,76 @@ def register_product(manufacturer_email, product_name, brand,
         connection.close()
 
 
+# ==========================================
+# GET MANUFACTURER PRODUCTS
+# ==========================================
+
+# ==========================================
+# GET MANUFACTURER PRODUCTS
+# ==========================================
+
+def get_manufacturer_products(manufacturer_id):
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+        SELECT
+            product_id,
+            product_name,
+            brand,
+            manufacturing_date,
+            expiry_date,
+            status
+        FROM Products
+        WHERE manufacturer_id = ?
+        """, (manufacturer_id,))
+
+        products = cursor.fetchall()
+
+        product_list = []
+
+        for product in products:
+            product_list.append({
+                "Product ID": product[0],
+                "Product Name": product[1],
+                "Brand": product[2],
+                "Manufacturing Date": product[3],
+                "Expiry Date": product[4],
+                "Status": product[5]
+            })
+
+        return product_list
+
+    finally:
+        connection.close()
+
+
+# ==========================================
+# GET MANUFACTURER PRODUCT COUNT
+# ==========================================
+
+def get_manufacturer_product_count(manufacturer_id):
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+        SELECT COUNT(*)
+        FROM Products
+        WHERE manufacturer_id = ?
+        """, (manufacturer_id,))
+
+        count = cursor.fetchone()[0]
+
+        return count
+
+    finally:
+        connection.close()
 # ==========================================
 # QR CODE SCANNING
 # ==========================================
