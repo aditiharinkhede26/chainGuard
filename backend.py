@@ -4,6 +4,7 @@ import uuid
 import qrcode
 import cv2
 import os
+from blockchain import register_product_on_blockchain, verify_product_on_blockchain
 
 from datetime import date
 
@@ -345,6 +346,20 @@ def register_product(manufacturer_email, product_name, brand,
             expiry_date
         ))
 
+                # Register Product on Blockchain
+
+        blockchain_result = register_product_on_blockchain(
+            product_id,
+            product_name,
+            brand
+        )
+
+        if not blockchain_result["success"]:
+            connection.rollback()
+            return "Blockchain registration failed."
+
+        # Commit Database Transaction
+
         connection.commit()
 
         # Generate QR Code
@@ -353,7 +368,9 @@ def register_product(manufacturer_email, product_name, brand,
 
         return (
             f"Product registered successfully! "
-            f"Product ID: {product_id}, QR Code: {qr_file}"
+            f"Product ID: {product_id}, "
+            f"QR Code: {qr_file}, "
+            f"Blockchain Block: {blockchain_result['block_number']}"
         )
 
     except sqlite3.IntegrityError:

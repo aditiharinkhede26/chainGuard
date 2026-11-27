@@ -2,3 +2,16 @@ chainguard.db
 __pycache__/
 .venv/
 .env
+
+
+
+
+# Node.js / Hardhat
+node_modules/
+artifacts/
+cache/
+typechain-types/
+
+# Generated files
+qr_codes/*.png
+contracts/contract_address.txt
